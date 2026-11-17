@@ -7367,25 +7367,68 @@ class PowerTimelineView extends PBView {
 			7
 		);
 		const totalDays = dayDiff(range.from, range.to) + 1;
-		const NAMEW = 220;
+		const storedNameW = this.config.get("pb-tl-namew");
+		let nameW = typeof storedNameW === "number" && storedNameW >= 100 ? Math.min(800, Math.round(storedNameW)) : 220;
 
 		const top = root.createDiv({ cls: "pb-tl-top" });
 		const todayBtn = top.createEl("button", { cls: "pb-cal-btn", text: "Today" });
 
 		const scroll = root.createDiv({ cls: "pb-tl-scroll" });
 		const inner = scroll.createDiv({ cls: "pb-tl-inner" });
-		inner.style.width = NAMEW + totalDays * ppd + "px";
-		if (zoom !== "month") {
+		inner.style.setProperty("--pb-tl-namew", nameW + "px");
+		inner.style.width = nameW + totalDays * ppd + "px";
+		const satOffset = zoom !== "month" ? (6 - dayOfWeek(range.from) + 7) % 7 : null;
+		if (satOffset != null) {
 			// weekend stripes: one gradient, aligned to the first Saturday
-			const satOffset = (6 - dayOfWeek(range.from) + 7) % 7;
 			inner.addClass("pb-tl-wk");
-			inner.style.setProperty("--pb-wkoff", NAMEW + satOffset * ppd + "px");
+			inner.style.setProperty("--pb-wkoff", nameW + satOffset * ppd + "px");
 			inner.style.setProperty("--pb-wk", ppd * 7 + "px");
 			inner.style.setProperty("--pb-wkw", ppd * 2 + "px");
 		}
 
+		let todayLine: HTMLElement | null = null;
+		const todayOff = dayDiff(range.from, todayKey);
+		const attachCornerResize = (corner: HTMLElement) => {
+			const grip = corner.createDiv({ cls: "pb-col-resize" });
+			grip.addEventListener("dblclick", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.config.set("pb-tl-namew", null);
+				this.onDataUpdated();
+			});
+			grip.addEventListener("pointerdown", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.dragging = true;
+				const startX = e.clientX;
+				const startW = nameW;
+				const applyW = (w: number) => {
+					nameW = w;
+					inner.style.setProperty("--pb-tl-namew", w + "px");
+					inner.style.width = w + totalDays * ppd + "px";
+					if (satOffset != null) inner.style.setProperty("--pb-wkoff", w + satOffset * ppd + "px");
+					if (todayLine) todayLine.style.left = w + todayOff * ppd + ppd / 2 + "px";
+				};
+				const move = (ev: PointerEvent) => {
+					applyW(Math.max(100, Math.min(800, Math.round(startW + (ev.clientX - startX)))));
+				};
+				const up = () => {
+					document.removeEventListener("pointermove", move);
+					document.removeEventListener("pointerup", up);
+					this.dragging = false;
+					this.config.set("pb-tl-namew", nameW === 220 ? null : nameW);
+					if (this.pendingUpdate || this.config.getAsPropertyId("depProp")) {
+						this.pendingUpdate = false;
+						this.onDataUpdated();
+					}
+				};
+				document.addEventListener("pointermove", move);
+				document.addEventListener("pointerup", up);
+			});
+		};
+
 		const months = inner.createDiv({ cls: "pb-tl-months" });
-		months.createDiv({ cls: "pb-tl-corner" });
+		attachCornerResize(months.createDiv({ cls: "pb-tl-corner" }));
 		for (const m of monthSpans(range.from, range.to)) {
 			const cell = months.createDiv({ cls: "pb-tl-month" });
 			cell.style.width = m.days * ppd + "px";
@@ -7401,7 +7444,7 @@ class PowerTimelineView extends PBView {
 		}
 		if (zoom === "day") {
 			const ticks = inner.createDiv({ cls: "pb-tl-ticks" });
-			ticks.createDiv({ cls: "pb-tl-corner" });
+			attachCornerResize(ticks.createDiv({ cls: "pb-tl-corner" }));
 			for (let i = 0; i < totalDays; i++) {
 				const t = ticks.createDiv({ cls: "pb-tl-tick" });
 				t.style.width = ppd + "px";
@@ -7409,7 +7452,7 @@ class PowerTimelineView extends PBView {
 			}
 		} else if (zoom === "week") {
 			const ticks = inner.createDiv({ cls: "pb-tl-ticks" });
-			ticks.createDiv({ cls: "pb-tl-corner" });
+			attachCornerResize(ticks.createDiv({ cls: "pb-tl-corner" }));
 			const firstMonday = (1 - dayOfWeek(range.from) + 7) % 7;
 			if (firstMonday > 0) {
 				const pad = ticks.createDiv({ cls: "pb-tl-tick pb-tl-pad" });
@@ -7422,13 +7465,12 @@ class PowerTimelineView extends PBView {
 			}
 		}
 
-		const todayOff = dayDiff(range.from, todayKey);
 		if (todayOff >= 0 && todayOff < totalDays) {
-			const line = inner.createDiv({ cls: "pb-tl-today" });
-			line.style.left = NAMEW + todayOff * ppd + ppd / 2 + "px";
+			todayLine = inner.createDiv({ cls: "pb-tl-today" });
+			todayLine.style.left = nameW + todayOff * ppd + ppd / 2 + "px";
 		}
 		todayBtn.addEventListener("click", () => {
-			scroll.scrollLeft = Math.max(0, NAMEW + todayOff * ppd - scroll.clientWidth / 2);
+			scroll.scrollLeft = Math.max(0, nameW + todayOff * ppd - scroll.clientWidth / 2);
 		});
 
 		// unscheduled pages: expand the strip, then DRAG a chip onto the axis
@@ -7455,10 +7497,10 @@ class PowerTimelineView extends PBView {
 					},
 					onMove: (_dx, _dy, x) => {
 						const r = scroll.getBoundingClientRect();
-						const xIn = x - r.left + scroll.scrollLeft - NAMEW;
+						const xIn = x - r.left + scroll.scrollLeft - nameW;
 						day = Math.max(0, Math.min(totalDays - 1, Math.floor(xIn / ppd)));
 						if (guide) {
-							guide.style.left = NAMEW + day * ppd + "px";
+							guide.style.left = nameW + day * ppd + "px";
 							guide.style.width = Math.max(2, ppd) + "px";
 						}
 						guideLbl?.setText(addDays(range.from, day));
@@ -7557,7 +7599,7 @@ class PowerTimelineView extends PBView {
 		if (depKey) this.drawDeps(inner, barEls, byPath, depKey);
 
 		if (prevScroll != null) scroll.scrollLeft = prevScroll;
-		else if (todayOff >= 0) scroll.scrollLeft = Math.max(0, NAMEW + todayOff * ppd - scroll.clientWidth / 2);
+		else if (todayOff >= 0) scroll.scrollLeft = Math.max(0, nameW + todayOff * ppd - scroll.clientWidth / 2);
 	}
 
 	/** Draw finish-to-start dependency arrows between bars after layout, so
