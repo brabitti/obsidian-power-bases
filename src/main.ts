@@ -7399,9 +7399,9 @@ class PowerTimelineView extends PBView {
 			grip.addEventListener("pointerdown", (e) => {
 				e.preventDefault();
 				e.stopPropagation();
-				this.dragging = true;
 				const startX = e.clientX;
 				const startW = nameW;
+				let moved = false;
 				const applyW = (w: number) => {
 					nameW = w;
 					inner.style.setProperty("--pb-tl-namew", w + "px");
@@ -7410,11 +7410,17 @@ class PowerTimelineView extends PBView {
 					if (todayLine) todayLine.style.left = w + todayOff * ppd + ppd / 2 + "px";
 				};
 				const move = (ev: PointerEvent) => {
+					if (!moved && Math.abs(ev.clientX - startX) < 2) return;
+					if (!moved) {
+						moved = true;
+						this.dragging = true;
+					}
 					applyW(Math.max(100, Math.min(800, Math.round(startW + (ev.clientX - startX)))));
 				};
 				const up = () => {
 					document.removeEventListener("pointermove", move);
 					document.removeEventListener("pointerup", up);
+					if (!moved) return;
 					this.dragging = false;
 					this.config.set("pb-tl-namew", nameW === 220 ? null : nameW);
 					if (this.pendingUpdate || this.config.getAsPropertyId("depProp")) {
