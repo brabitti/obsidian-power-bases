@@ -7368,7 +7368,7 @@ class PowerTimelineView extends PBView {
 		);
 		const totalDays = dayDiff(range.from, range.to) + 1;
 		const storedNameW = this.config.get("pb-tl-namew");
-		let nameW = typeof storedNameW === "number" && storedNameW >= 100 ? Math.min(800, Math.round(storedNameW)) : 220;
+		let nameW = typeof storedNameW === "number" && storedNameW >= 100 ? Math.min(1200, Math.round(storedNameW)) : 220;
 
 		const top = root.createDiv({ cls: "pb-tl-top" });
 		const todayBtn = top.createEl("button", { cls: "pb-cal-btn", text: "Today" });
@@ -7387,13 +7387,27 @@ class PowerTimelineView extends PBView {
 		}
 
 		let todayLine: HTMLElement | null = null;
+		const AUTO_FIT_MAX = 460;
 		const todayOff = dayDiff(range.from, todayKey);
 		const attachCornerResize = (corner: HTMLElement) => {
 			const grip = corner.createDiv({ cls: "pb-col-resize" });
 			grip.addEventListener("dblclick", (e) => {
 				e.preventDefault();
 				e.stopPropagation();
-				this.config.set("pb-tl-namew", null);
+				const names = inner.querySelectorAll<HTMLElement>(".pb-tl-name");
+				if (!names.length) return;
+				const cs = getComputedStyle(names[0]);
+				const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 6;
+				const ctx = document.createElement("canvas").getContext("2d");
+				if (ctx) ctx.font = cs.font;
+				let maxW = 0;
+				for (const el of Array.from(names)) {
+					const txt = el.textContent ?? "";
+					const w = ctx ? ctx.measureText(txt).width : el.scrollWidth;
+					if (w > maxW) maxW = w;
+				}
+				const fitW = Math.max(100, Math.min(AUTO_FIT_MAX, Math.ceil(maxW + padX)));
+				this.config.set("pb-tl-namew", fitW === 220 ? null : fitW);
 				this.onDataUpdated();
 			});
 			grip.addEventListener("pointerdown", (e) => {
@@ -7415,7 +7429,7 @@ class PowerTimelineView extends PBView {
 						moved = true;
 						this.dragging = true;
 					}
-					applyW(Math.max(100, Math.min(800, Math.round(startW + (ev.clientX - startX)))));
+					applyW(Math.max(100, Math.min(1200, Math.round(startW + (ev.clientX - startX)))));
 				};
 				const up = () => {
 					document.removeEventListener("pointermove", move);
